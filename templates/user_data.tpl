@@ -94,19 +94,18 @@ sudo ufw enable
 
 cat > /rust.env <<- "EOF"
 RUST_SERVER_STARTUP_ARGUMENTS="-batchmode -load -logfile /dev/stdout +server.secure 1"
-RUST_SERVER_IDENTITY="Fragtopia"
+RUST_SERVER_IDENTITY="${server_name}"
 RUST_SERVER_SEED="4983"
-RUST_SERVER_NAME="Fragtopia Rust"
-RUST_SERVER_DESCRIPTION="Fragtopia Rust"
+RUST_SERVER_NAME="${server_name}"
+RUST_SERVER_DESCRIPTION="${server_name}: Carebear-ish"
 RUST_RCON_PASSWORD="ReplaceMe!"
 
 RUST_SERVER_WORLDSIZE="2000"
 RUST_SERVER_MAXPLAYERS="100"
-RUST_SERVER_DESCRIPTION="Fragtopia: Carebear-ish"
 EOF
 
 # RETRIEVE RCON PASS VALUE FROM SSM PARAMETER STORE AND UPDATE RUST.ENV
-export PASSWORD=$(aws ssm get-parameter --region $EC2_REGION --name ${ssm_parameter_path} --with-decryption | jq -r ".Parameter.Value")
+export PASSWORD="${password}"
 sed -i "s/ReplaceMe!/$PASSWORD/g" /rust.env
 
 # START THE RUST CONTAINER.  DOWNLOADS LATEST RUST-SERVER IMAGE FROM DOCKER HUB
