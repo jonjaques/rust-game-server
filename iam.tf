@@ -16,14 +16,17 @@ data "aws_iam_policy_document" "assume_role" {
 data "aws_iam_policy_document" "ec2" {
   statement {
     actions = [
-
+      "autoscaling:DescribeAutoScalingInstances",
+      "cloudwatch:PutMetricData",
+      "ec2:DescribeInstances",
+      "ec2:DescribeTags",
       "ec2:DescribeVolumes",
-      "kms:DescribeKey",
-      "kms:Encrypt",
-      "kms:Decrypt",
-      "kms:ReEncrypt*",
-      "kms:GenerateDataKey",
-      "kms:GenerateDataKeyWithoutPlaintext",
+      "ecr:BatchCheckLayerAvailability",
+      "ecr:BatchGetImage",
+      "ecr:GetAuthorizationToken",
+      "ecr:GetDownloadUrlForLayer",
+      "logs:CreateLogStream",
+      "logs:PutLogEvents",
       "ssm:DescribeParameter",
       "ssm:GetParameter"
     ]

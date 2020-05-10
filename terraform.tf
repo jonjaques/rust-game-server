@@ -12,4 +12,10 @@ provider "aws" {
   region = var.aws_region
 }
 
+data "aws_availability_zones" "available" {
+  state = "available"
+}
 
+locals {
+  availability_zone = data.aws_availability_zones.available.names[0]
+}
