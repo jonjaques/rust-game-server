@@ -26,9 +26,7 @@ data "aws_iam_policy_document" "ec2" {
       "ecr:GetAuthorizationToken",
       "ecr:GetDownloadUrlForLayer",
       "logs:CreateLogStream",
-      "logs:PutLogEvents",
-      "ssm:DescribeParameter",
-      "ssm:GetParameter"
+      "logs:PutLogEvents"
     ]
 
     effect = "Allow"
@@ -39,17 +37,17 @@ data "aws_iam_policy_document" "ec2" {
 
 
 resource "aws_iam_role" "ec2" {
-  name               = "describe_volumes_role"
+  name_prefix        = "rust"
   assume_role_policy = data.aws_iam_policy_document.assume_role.json
 }
 
 resource "aws_iam_instance_profile" "ec2_describe_volumes_profile" {
-  name = "ec2_describe_volumes_profile"
-  role = aws_iam_role.ec2.name
+  name_prefix = "rust"
+  role        = aws_iam_role.ec2.name
 }
 
 resource "aws_iam_role_policy" "ec2_describe_volumes_policy" {
-  name   = "ec2_describe_volumes_policy"
-  role   = aws_iam_role.ec2.id
-  policy = data.aws_iam_policy_document.ec2.json
+  name_prefix = "rust"
+  role        = aws_iam_role.ec2.id
+  policy      = data.aws_iam_policy_document.ec2.json
 }

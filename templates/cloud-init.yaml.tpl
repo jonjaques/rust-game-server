@@ -3,7 +3,7 @@ runcmd:
   - yum update -y
   - echo "/usr/bin/yum update --security -y" > /etc/cron.weekly/yumsecurity.cron
   - sleep 5
-  - yum install -y docker jq amazon-efs-utils https://s3.amazonaws.com/amazoncloudwatch-agent/amazon_linux/amd64/latest/amazon-cloudwatch-agent.rpm
+  - yum install -y docker jq amazon-efs-utils
   - sleep 5
   - usermod -a -G docker ec2-user
   - curl -L https://github.com/docker/compose/releases/download/1.25.4/docker-compose-Linux-x86_64 -o /usr/bin/docker-compose
@@ -11,90 +11,133 @@ runcmd:
   - systemctl enable docker
   - systemctl start docker
   - echo "docker system prune --force" > /etc/cron.hourly/docker-cleanup.cron
-  - amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/etc/cloudwatch/config.json -s
   - bash /etc/rust-admin/mount-volume.sh
-  - docker-compose -f /rust.docker-compose up -d
+  - docker-compose -f /app/docker-compose.yml up -d
 
 write_files:
-  - path: /rust.docker-compose
+  - path: /app/docker-compose.yml
     content: |
       version: '3.4'
 
+      volumes:
+        prometheus_data:
+        grafana_data:
+
       services:
-        rust_server:
-          container_name: rust-server
+        rustserver:
+          env_file: /app/envs/rust.env
           image: didstopia/rust-server
+          volumes:
+            - /rust:/steamcmd/rust
           ports:
             - 28015:28015
             - 28015:28015/udp
             - 28016:28016
-            - 8080:8080
-          restart: always
+            - 28017:8080
+          labels:
+            org.label-schema.group: "rust"
+
+        grafana:
+          env_file: /app/envs/grafana.env
+          image: grafana/grafana
           volumes:
-            - /rust:/steamcmd/rust
-          env_file: /rust.env
+            - grafana_data:/var/lib/grafana
+          restart: unless-stopped
+          expose:
+            - 3000
+          ports:
+            - 28018:3000
+          labels:
+            org.label-schema.group: "monitoring"
 
-  - path: /rust.env
+        prometheus:
+          image: prom/prometheus
+          expose:
+            - 9090
+          volumes:
+            - ./prometheus:/etc/prometheus
+            - prometheus_data:/prometheus
+          labels:
+            org.label-schema.group: "monitoring"
+
+        cadvisor:
+          image: gcr.io/google-containers/cadvisor:v0.36.0
+          volumes:
+            - /:/rootfs:ro
+            - /var/run:/var/run:rw
+            - /sys:/sys:ro
+            - /var/lib/docker:/var/lib/docker:ro
+            - /cgroup:/cgroup:ro
+          restart: unless-stopped
+          expose:
+            - 8080
+          labels:
+            org.label-schema.group: "monitoring"
+
+        alertmanager:
+          image: prom/alertmanager
+          volumes:
+            - ./alertmanager:/etc/alertmanager
+          command:
+            - '--config.file=/etc/alertmanager/config.yml'
+            - '--storage.path=/alertmanager'
+          restart: unless-stopped
+          expose:
+            - 9093
+          labels:
+            org.label-schema.group: "monitoring"
+
+        pushgateway:
+          image: prom/pushgateway
+          restart: unless-stopped
+          expose:
+            - 9091
+          labels:
+            org.label-schema.group: "monitoring"
+
+        nodeexporter:
+          image: prom/node-exporter
+          volumes:
+            - /proc:/host/proc:ro
+            - /sys:/host/sys:ro
+            - /:/rootfs:ro
+          command:
+            - '--path.procfs=/host/proc'
+            - '--path.rootfs=/rootfs'
+            - '--path.sysfs=/host/sys'
+            - '--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($$|/)'
+          restart: unless-stopped
+          expose:
+            - 9100
+          labels:
+            org.label-schema.group: "monitoring"
+
+  - path: /app/envs/grafana.env
     content: |
-      # (DEFAULT: "-batchmode -load -nographics +server.secure 1")
-      # RUST_SERVER_STARTUP_ARGUMENTS="-batchmode -load -nographics +server.secure 1"
+      GF_SECURITY_ADMIN_USER=${GRAFANA_USER}
+      GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP=false
 
-      # (DEFAULT: "docker" - Mainly used for the name of the save directory)
-      # RUST_SERVER_IDENTITY="docker"
-
-      # (DEFAULT: "" - Rust server port 28015 if left blank or numeric value)
-      # RUST_SERVER_PORT=""
-
-      # (DEFAULT: "12345" - The server map seed, must be an integer)
-      RUST_SERVER_SEED="${server_seed}"
-
-      # (DEFAULT: "3500" - The map size, must be an integer)
-      RUST_SERVER_WORLDSIZE="${server_world_size}"
-
-      # (DEFAULT: "Rust Server [DOCKER]" - The publicly visible server name)
-      RUST_SERVER_NAME="${server_name}"
-
-      # (DEFAULT: "500" - Maximum players on the server, must be an integer)
-      RUST_SERVER_MAXPLAYERS="${server_max_players}"
-
-      # (DEFAULT: "This is a Rust server running inside a Docker container!" - The publicly visible server description)
-      RUST_SERVER_DESCRIPTION="${server_description}"
-
-      # (DEFAULT: "https://hub.docker.com/r/didstopia/rust-server/" - The publicly visible server website)
-      # RUST_SERVER_URL="https://hub.docker.com/r/didstopia/rust-server/"
-
-      # (DEFAULT: "" - The publicly visible server banner image URL)
-      # RUST_SERVER_BANNER_URL=""
-
-      # (DEFAULT: "600" - Amount of seconds between automatic saves.)
-      RUST_SERVER_SAVE_INTERVAL="600"
-
-      # (DEFAULT "1" - Set to 1 or 0 to enable or disable the web-based RCON server)
-      RUST_RCON_WEB="1"
-
-      # (DEFAULT: "28016" - RCON server port)
-      RUST_RCON_PORT="28016"
-
-      # (DEFAULT: "docker" - RCON server password, please change this!)
-      RUST_RCON_PASSWORD="${password}"
-
-      # (DEFAULT: Not set - Sets the branch argument to use, eg. set to "-beta prerelease" for the prerelease branch)
-      # RUST_BRANCH="-beta prerelease"
-
-      # (DEFAULT: "0" - Set to 1 to enable fully automatic update checking, notifying players and restarting to install updates)
-      RUST_UPDATE_CHECKING="0"
-
-      # (DEFAULT: "public" - Set to match the branch that you want to use for updating, ie. "prerelease" or "public", but do not specify arguments like "-beta")
-      RUST_UPDATE_BRANCH="public"
-
-      # (DEFAULT: "0" - Determines if the server should update and then start (0), only update (1) or only start (2))
-      RUST_START_MODE="0"
-
-      # (DEFAULT: "0" - Set to 1 to automatically install the latest version of Oxide)
-      RUST_OXIDE_ENABLED="1"
-
-      # (DEFAULT: "1" - Set to 0 to disable automatic update of Oxide on boot)
-      RUST_OXIDE_UPDATE_ON_BOOT="1"
+  - path: /app/envs/rust.env
+    content: |
+      RUST_SERVER_STARTUP_ARGUMENTS=${RUST_SERVER_STARTUP_ARGUMENTS}
+      RUST_SERVER_IDENTITY=${RUST_SERVER_IDENTITY}
+      RUST_SERVER_SEED=${RUST_SERVER_SEED}
+      RUST_SERVER_NAME=${RUST_SERVER_NAME}
+      RUST_SERVER_DESCRIPTION=${RUST_SERVER_DESCRIPTION}
+      RUST_SERVER_URL=${RUST_SERVER_URL}
+      RUST_SERVER_BANNER_URL=${RUST_SERVER_BANNER_URL}
+      RUST_RCON_WEB=${RUST_RCON_WEB}
+      RUST_RCON_PORT=${RUST_RCON_PORT}
+      RUST_RCON_PASSWORD=${RUST_RCON_PASSWORD}
+      RUST_UPDATE_CHECKING=${RUST_UPDATE_CHECKING}
+      RUST_UPDATE_BRANCH=${RUST_UPDATE_BRANCH}
+      RUST_START_MODE=${RUST_START_MODE}
+      RUST_OXIDE_ENABLED=${RUST_OXIDE_ENABLED}
+      RUST_OXIDE_UPDATE_ON_BOOT=${RUST_OXIDE_UPDATE_ON_BOOT}
+      RUST_SERVER_WORLDSIZE=${RUST_SERVER_WORLDSIZE}
+      RUST_SERVER_MAXPLAYERS=${RUST_SERVER_MAXPLAYERS}
+      RUST_SERVER_SAVE_INTERVAL=${RUST_SERVER_SAVE_INTERVAL}
 
 
   - path: /etc/rust-admin/mount-volume.sh
@@ -110,9 +153,9 @@ write_files:
       DATA_STATE="unknown"
       until [ $DATA_STATE == "attached" ]; do
         DATA_STATE=$(aws ec2 describe-volumes \
-            --region ${region} \
+            --region ${AWS_REGION} \
             --filters \
-                Name=tag:Name,Values=${server_name}-persistent-volume \
+                Name=tag:Name,Values=${RUST_SERVER_IDENTITY}-persistent-volume \
                 Name=attachment.device,Values=/dev/sdh \
             --query Volumes[].Attachments[].State \
             --output text)
@@ -151,55 +194,109 @@ write_files:
         "experimental": true,
         "log-driver": "awslogs",
         "log-opts": {
-          "awslogs-group": "${server_name}",
+          "awslogs-group": "${RUST_SERVER_IDENTITY}",
           "tag": "{{.Name}}-{{.ID}}"
         }
       }
 
-  - path: /etc/cloudwatch/config.json
+  - path: /app/alertmanager/config.yml
     content: |
-      {
-        "metrics": {
-          "aggregation_dimensions": [
-            ["AutoScalingGroupName"],
-            ["InstanceId"]
-          ],
-          "append_dimensions": {
-            "AutoScalingGroupName": "$${aws:AutoScalingGroupName}",
-            "InstanceId": "$${aws:InstanceId}"
-          },
-          "metrics_collected": {
-            "cpu": {
-              "measurement": [
-                "cpu_usage_idle",
-                "cpu_usage_iowait",
-                "cpu_usage_user",
-                "cpu_usage_system"
-              ],
-              "metrics_collection_interval": 60,
-              "totalcpu": true
-            },
-            "mem": {
-              "measurement": [
-                "mem_used_percent"
-              ],
-              "metrics_collection_interval": 60
-            },
-            "swap": {
-              "measurement": [
-                "swap_used_percent"
-              ],
-              "metrics_collection_interval": 60
-            },
-            "disk": {
-              "resources": [
-                "/"
-              ],
-              "measurement": [
-                "disk_used_percent"
-              ],
-              "metrics_collection_interval": 60
-            }
-          }
-        }
-      }
+      route:
+        receiver: 'slack'
+
+      receivers:
+        - name: 'slack'
+          slack_configs:
+            - send_resolved: true
+              text: "{{ .CommonAnnotations.description }}"
+              username: 'Prometheus'
+              channel: '${ALERTMANAGER_SLACK_CHANNEL}'
+              api_url: '${ALERTMANAGER_SLACK_URL}'
+  - path: /app/prometheus/prometheus.yml
+    content: |
+      global:
+        scrape_interval:     10s
+        evaluation_interval: 10s
+
+        # Attach these labels to any time series or alerts when communicating with
+        # external systems (federation, remote storage, Alertmanager).
+        external_labels:
+          monitor: '${RUST_SERVER_IDENTITY}'
+
+      # Load and evaluate rules in this file every 'evaluation_interval' seconds.
+      rule_files:
+        - "alert.rules"
+
+      # A scrape configuration containing exactly one endpoint to scrape.
+      scrape_configs:
+        - job_name: 'nodeexporter'
+          scrape_interval: 10s
+          static_configs:
+            - targets: ['nodeexporter:9100']
+
+        - job_name: 'cadvisor'
+          scrape_interval: 10s
+          static_configs:
+            - targets: ['cadvisor:8080']
+
+        - job_name: 'prometheus'
+          scrape_interval: 10s
+          static_configs:
+            - targets: ['localhost:9090']
+
+        - job_name: 'pushgateway'
+          scrape_interval: 10s
+          honor_labels: true
+          static_configs:
+            - targets: ['pushgateway:9091']
+
+      alerting:
+        alertmanagers:
+        - scheme: http
+          static_configs:
+          - targets:
+            - 'alertmanager:9093'
+
+  - path: /app/prometheus/alert.rules
+    content: |
+      groups:
+      - name: targets
+        rules:
+        - alert: monitor_service_down
+          expr: up == 0
+          for: 30s
+          labels:
+            severity: critical
+          annotations:
+            summary: "Monitor service non-operational"
+            description: "Service {{ $labels.instance }} is down."
+
+      - name: host
+        rules:
+        - alert: high_cpu_load
+          expr: node_load1 > 1.5
+          for: 30s
+          labels:
+            severity: warning
+          annotations:
+            summary: "Server under high load"
+            description: "Docker host is under high load, the avg load 1m is at {{ $value}}. Reported by instance {{ $labels.instance }} of job {{ $labels.job }}."
+
+        - alert: high_memory_load
+          expr: (sum(node_memory_MemTotal_bytes) - sum(node_memory_MemFree_bytes + node_memory_Buffers_bytes + node_memory_Cached_bytes) ) / sum(node_memory_MemTotal_bytes) * 100 > 85
+          for: 30s
+          labels:
+            severity: warning
+          annotations:
+            summary: "Server memory is almost full"
+            description: "Docker host memory usage is {{ humanize $value}}%. Reported by instance {{ $labels.instance }} of job {{ $labels.job }}."
+
+        - alert: high_storage_load
+          expr: (node_filesystem_size_bytes{fstype="aufs"} - node_filesystem_free_bytes{fstype="aufs"}) / node_filesystem_size_bytes{fstype="aufs"}  * 100 > 85
+          for: 30s
+          labels:
+            severity: warning
+          annotations:
+            summary: "Server storage is almost full"
+            description: "Docker host storage usage is {{ humanize $value}}%. Reported by instance {{ $labels.instance }} of job {{ $labels.job }}."
+

@@ -1,1 +1,25 @@
-aws_key_name = "admin"
+
+aws_key_name           = "admin"
+alertmanager_slack_url = "https://hooks.slack.com/services/000000000/00000000000/0000111122223333444455556666"
+alertmanager_slack_channel = "rust-notifications"
+
+aws_region             = "us-east-2"
+aws_instance_type      = "t3.large"
+aws_acm_domain         = "*.example.com"
+
+rust_server_identity    = "test-123"
+rust_server_seed        = "3425"
+rust_server_name        = "Dev Server"
+rust_server_description = "Don't mess with me buddy..."
+rust_server_url         = "https://test-123.example.com"
+rust_server_banner_url  = "https://test-123.example.com/assets/banner.png"
+
+rust_rcon_web      = true
+rust_rcon_password = "test123"
+grafana_password   = "test123"
+
+rust_update_checking      = true
+rust_oxide_enabled        = true
+rust_oxide_update_on_boot = true
+rust_server_worldsize     = 5000
+rust_server_maxplayers    = 250

@@ -1,10 +1,10 @@
 resource "aws_security_group" "rust" {
-  name        = "rust"
+  name_prefix = "rust"
   description = "Rust Server EC2 Security Group"
 
   ingress {
     from_port   = 28015
-    to_port     = 28016
+    to_port     = 28018
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -19,13 +19,6 @@ resource "aws_security_group" "rust" {
   ingress {
     from_port   = 22
     to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    from_port   = 8080
-    to_port     = 8080
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }

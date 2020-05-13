@@ -5,7 +5,7 @@ resource "aws_ebs_volume" "rust_persistent" {
   size              = 50
   type              = "io1"
   tags = {
-    Name = "${var.server_name}-persistent-volume"
+    Name = "${var.rust_server_identity}-persistent-volume"
   }
 }
 
